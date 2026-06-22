@@ -1,8 +1,8 @@
-use lopdf::{Document, Object, ObjectId, Dictionary, Stream};
+use lopdf::{Document, Object, ObjectId, Dictionary};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::path::Path;
-use image::{DynamicImage, ImageOutputFormat};
+use image::ImageOutputFormat;
 use std::io::Cursor;
 
 /// Merges a list of PDF file paths into a single output file path.
@@ -86,7 +86,7 @@ pub fn merge_pdfs_impl(input_paths: Vec<String>, output_path: String) -> Result<
     documents_objects.insert(pages_id, Object::Dictionary(pages));
 
     // Update parent reference for all pages to point to the new combined Pages object
-    for (&id, object) in &mut documents_objects {
+    for (_, object) in &mut documents_objects {
         if let Ok(dict) = object.as_dict_mut() {
             if dict.type_name().map_or(false, |t| t == "Page") {
                 dict.set("Parent", Object::Reference(pages_id));
@@ -95,8 +95,10 @@ pub fn merge_pdfs_impl(input_paths: Vec<String>, output_path: String) -> Result<
     }
 
     let mut merged_doc = Document::new();
+    merged_doc.version = "1.7".to_string();
     merged_doc.objects = documents_objects;
     merged_doc.trailer.set("Root", Object::Reference(catalog_id));
+    merged_doc.trailer.set("Size", Object::Integer(max_id as i64));
     merged_doc.max_id = max_id;
 
     merged_doc.save(output_path).map_err(|e| format!("Failed to save merged PDF: {}", e))?;
@@ -121,59 +123,22 @@ pub fn split_pdf_impl(input_path: String, output_dir: String, ranges: Vec<(usize
             return Err(format!("Invalid page range {}-{}. Total pages: {}", start, end, total_pages));
         }
 
-        let mut split_doc = Document::new();
-        let mut max_id = 1;
-        let mut new_objects = BTreeMap::new();
-        let mut new_page_refs = Vec::new();
-
-        // Create new catalog and pages objects
-        let catalog_id = (max_id, 0); max_id += 1;
-        let pages_id = (max_id, 0); max_id += 1;
-
-        // Copy page objects and their dependencies
-        for page_num in start..=end {
-            if let Some(&orig_page_ref) = pages.get(&(page_num as u32)) {
-                // Copy page object
-                if let Ok(page_obj) = doc.get_object(orig_page_ref) {
-                    let mut page_clone = page_obj.clone();
-                    if let Ok(dict) = page_clone.as_dict_mut() {
-                        dict.set("Parent", Object::Reference(pages_id));
-                    }
-                    
-                    // Renumber and insert
-                    let new_page_id = (max_id, 0); max_id += 1;
-                    new_objects.insert(new_page_id, page_clone);
-                    new_page_refs.push(Object::Reference(new_page_id));
-
-                    // Copy dependencies (resources, contents)
-                    if let Ok(dict) = page_obj.as_dict() {
-                        if let Ok(contents) = dict.get(b"Contents") {
-                            copy_dependencies(&doc, contents, &mut new_objects, &mut max_id);
-                        }
-                        if let Ok(resources) = dict.get(b"Resources") {
-                            copy_dependencies(&doc, resources, &mut new_objects, &mut max_id);
-                        }
-                    }
-                }
+        let mut split_doc = doc.clone();
+        
+        let mut pages_to_delete = Vec::new();
+        for page_num in 1..=total_pages {
+            if page_num < start || page_num > end {
+                pages_to_delete.push(page_num as u32);
             }
         }
-
-        let mut catalog = Dictionary::new();
-        catalog.set("Type", Object::Name("Catalog".as_bytes().to_vec()));
-        catalog.set("Pages", Object::Reference(pages_id));
-
-        let mut pages_dict = Dictionary::new();
-        pages_dict.set("Type", Object::Name("Pages".as_bytes().to_vec()));
-        pages_dict.set("Count", Object::Integer(new_page_refs.len() as i64));
-        pages_dict.set("Kids", Object::Array(new_page_refs));
-
-        new_objects.insert(catalog_id, Object::Dictionary(catalog));
-        new_objects.insert(pages_id, Object::Dictionary(pages_dict));
-
-        split_doc.objects = new_objects;
-        split_doc.trailer.set("Root", Object::Reference(catalog_id));
-        split_doc.max_id = max_id;
-
+        
+        if !pages_to_delete.is_empty() {
+            split_doc.delete_pages(&pages_to_delete);
+        }
+        
+        split_doc.prune_objects();
+        split_doc.renumber_objects();
+        
         let out_filename = format!("{}_part_{}.pdf", filename_stem, idx + 1);
         let out_path = Path::new(&output_dir).join(out_filename);
         let out_path_str = out_path.to_string_lossy().to_string();
@@ -183,53 +148,6 @@ pub fn split_pdf_impl(input_path: String, output_dir: String, ranges: Vec<(usize
     }
 
     Ok(created_files)
-}
-
-fn copy_dependencies(
-    src_doc: &Document,
-    obj: &Object,
-    dest_objects: &mut BTreeMap<ObjectId, Object>,
-    max_id: &mut u32
-) {
-    match obj {
-        Object::Reference(id) => {
-            if !dest_objects.contains_key(id) {
-                if let Ok(linked_obj) = src_doc.get_object(*id) {
-                    dest_objects.insert(*id, linked_obj.clone());
-                    // Recursively copy referenced objects
-                    match linked_obj {
-                        Object::Dictionary(dict) => {
-                            for (_, val) in dict {
-                                copy_dependencies(src_doc, val, dest_objects, max_id);
-                            }
-                        }
-                        Object::Array(arr) => {
-                            for val in arr {
-                                copy_dependencies(src_doc, val, dest_objects, max_id);
-                            }
-                        }
-                        Object::Stream(stream) => {
-                            for (_, val) in &stream.dict {
-                                copy_dependencies(src_doc, val, dest_objects, max_id);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        Object::Dictionary(dict) => {
-            for (_, val) in dict {
-                copy_dependencies(src_doc, val, dest_objects, max_id);
-            }
-        }
-        Object::Array(arr) => {
-            for val in arr {
-                copy_dependencies(src_doc, val, dest_objects, max_id);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// Compresses a PDF by extracting XObject images, resizing/re-compressing them, and writing them back.
@@ -255,11 +173,12 @@ pub fn compress_pdf_impl(input_path: String, output_path: String, quality: u8) -
                             img
                         };
 
+                        let rgb_img = resized.to_rgb8();
                         let mut compressed_bytes = Vec::new();
                         let mut cursor = Cursor::new(&mut compressed_bytes);
                         
                         // Save image as JPEG with configured quality
-                        if let Err(_) = resized.write_to(&mut cursor, ImageOutputFormat::Jpeg(quality)) {
+                        if let Err(_) = rgb_img.write_to(&mut cursor, ImageOutputFormat::Jpeg(quality)) {
                             continue;
                         }
 
@@ -267,6 +186,8 @@ pub fn compress_pdf_impl(input_path: String, output_path: String, quality: u8) -
                         stream.dict.set("Width", Object::Integer(resized.width() as i64));
                         stream.dict.set("Height", Object::Integer(resized.height() as i64));
                         stream.dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
+                        stream.dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+                        stream.dict.set("BitsPerComponent", Object::Integer(8));
                         stream.dict.remove(b"DecodeParms");
                         stream.set_content(compressed_bytes);
                     }
