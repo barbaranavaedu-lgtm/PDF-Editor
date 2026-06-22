@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #050b18;
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(11, 19, 38, 0.6);
+  backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.glass-card {
+  background: rgba(17, 27, 51, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(22, 35, 64, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(171, 199, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.glass-input {
+  background: rgba(13, 22, 43, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  background: rgba(18, 30, 58, 0.6);
+  border-color: rgba(171, 199, 255, 0.4);
+  box-shadow: 0 0 12px rgba(171, 199, 255, 0.15);
+}
+
+.glass-button {
+  background: rgba(171, 199, 255, 0.08);
+  border: 1px solid rgba(171, 199, 255, 0.15);
+  backdrop-filter: blur(8px);
+  color: #abc7ff;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-button:hover {
+  background: rgba(171, 199, 255, 0.18);
+  border-color: rgba(171, 199, 255, 0.3);
+  box-shadow: 0 0 15px rgba(171, 199, 255, 0.2);
+}
+
+.glass-button-primary {
+  background: linear-gradient(135deg, rgba(46, 114, 210, 0.8), rgba(0, 92, 187, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-button-primary:hover {
+  background: linear-gradient(135deg, rgba(46, 114, 210, 0.95), rgba(0, 92, 187, 0.95));
+  border-color: rgba(171, 199, 255, 0.3);
+  box-shadow: 0 0 20px rgba(46, 114, 210, 0.4);
+  transform: scale(1.02);
+}
+
+.glass-button-primary:active {
+  transform: scale(0.98);
+}
+
+/* Material symbols font weight fix */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Glowing dot indicator */
+.glow-green {
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* Dropzone dot pattern background */
+.dropzone-pattern {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(11, 19, 38, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
